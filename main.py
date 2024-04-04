@@ -121,3 +121,53 @@ fig.update_layout(title='Trend of Hospitalizations in Ontario',
 # Show the figure
 fig.show()
 
+# Extract the seasonal component
+seasonality = decomposition.seasonal.reset_index()
+
+# If you want to plot the seasonality for each year separately
+# and your data covers full years, you can do the following:
+
+# Add a 'year' and 'day_of_year' column to seasonality
+seasonality['year'] = seasonality['date'].dt.year
+seasonality['month'] = seasonality['date'].dt.month
+seasonality['day_of_year'] = seasonality['date'].dt.dayofyear
+
+# Now, plot the seasonality for each year
+fig = go.Figure()
+
+# Get a list of unique years in the data (maybe ditch 2024?)
+years = seasonality['year'].unique()
+
+for year in years:
+    # Filter the data for the specific year
+    yearly_data = seasonality[seasonality['year'] == year]
+
+    # Add a trace for each year
+    fig.add_trace(go.Scatter(x=yearly_data['day_of_year'],
+                             y=yearly_data['seasonal'],
+                             mode='lines',
+                             name=str(year)))
+
+# To display the months, create a dictionary of month number to abbreviated name
+month_ticks = {i: month for i, month in enumerate(month_abbr) if i > 0}
+
+# Add custom x-axis ticks at the approximate location of each month assuming non-leap year
+# January 1st is day 1, February 1st is day 32, etc.
+month_ticks_positions = {32: 'Jan', 60: 'Feb', 91: 'Mar', 121: 'Apr', 152: 'May', 182: 'Jun', 
+                         213: 'Jul', 244: 'Aug', 274: 'Sep', 305: 'Oct', 335: 'Nov', 366: 'Dec'}
+
+# Update the layout
+fig.update_layout(
+    title='Annual Seasonalaity Plot of Hospitalizations in Ontario',
+    xaxis=dict(
+        title='Month',
+        tickmode='array',
+        tickvals=list(month_ticks_positions.keys()),
+        ticktext=list(month_ticks_positions.values())
+    ),
+    yaxis_title='Seasonality Value',
+    hovermode='closest'
+)
+
+# Show the figure
+fig.show()
