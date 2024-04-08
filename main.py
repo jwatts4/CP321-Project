@@ -5,7 +5,64 @@
 # Jake Watts - 151477490
 # Evan Parisotto - 
 
-# In[1]:
+# # Introduction
+# In the more than four years since the beginning of the COVID-19 pandemic, Ontario's hospitals have been met with cycles of inundation related to the virus and its variants. Here, it is our aim to utilize a [dateset from the Ontario Ministry of Health](https://data.ontario.ca/dataset/covid-19-cases-in-hospital-and-icu-by-ontario-health-region) to explore questions about how the load experienced by the province's hospitals has been distributed (namely, how it has been distributed across different Ontario Health Regions, characterized by clear geographic boundaries as well as approximate population numbers), and been affected by key events, like the emergence of new variants and vaccines. Through the lens of this analysis, we seek to understand not only the patterns and pressures of the past four years but also to identify trends and seasonal fluctuations that could guide future healthcare strategies.
+# 
+# ## Motivation
+# The onslaught of the COVID-19 pandemic has been an unprecedented challenge for healthcare systems worldwide. In Ontario, the spread of the virus and its evolving strains, alongside the implementation of vaccines, has led to fluctuating demands on hospitals and Intensive Care Units (ICUs). This project is motivated by the need to dissect and comprehend these fluctuations. We aim to elucidate the temporal progression of hospital and ICU burdens and to discern patterns that may inform future health crisis responses, resource allocations, and public health directives.
+# 
+# ## Data Set Description
+# 
+# ### [Data Source - COVID-19 Cases in Hospital and ICU by Ontario Health Region](https://data.ontario.ca/dataset/covid-19-cases-in-hospital-and-icu-by-ontario-health-region)
+# To focus our exploration of the data, we elected to prioritize the `hospitalizations` and `icu_current_covid` response variables from this dataset. The daily numbers were used for the time series visualizations, and grouped by the `oh_region` field to get totals for the respective six Ontario Health regions for the later proportion and geospatial visualizations.
+# 
+# | CSV Field           | Description                                                                                   |
+# |---------------------|-----------------------------------------------------------------------------------------------|
+# | `date`              | Date                                                                                          |
+# | `oh_region`         | Ontario Health Region                                                                                     |
+# | `hospitalizations`  | Current hospitalizations with COVID-19                                                        |
+# | `icu_crci_total`    | Current patients in Intensive Care Units (ICUs) due to COVID-related critical illness         |
+# | `icu_current_covid` | Patients in Intensive Care Units (ICUs) testing positive for COVID                            |
+# | `icu_former_covid`  | Current patients in Intensive Care Units (ICUs) no longer testing positive for COVID          |
+# | `icu_crci_total_vented` | Current patients in Intensive Care Units (ICUs) on ventilators due to COVID-related critical illness |
+# | `icu_current_covid_vented` | Current patients in Intensive Care Units (ICUs) on ventilators testing positive for COVID   |
+# | `icu_former_covid_vented` | Current patients in Intensive Care Units (ICUs) on ventilators no longer testing positive for COVID |
+# 
+# ### [Ontario Health Region Boundaries](https://data.ontario.ca/dataset/ontario-s-health-region-geographic-data)
+# | Column Name   | Data Type | Description                                 |
+# |---------------|-----------|---------------------------------------------|
+# | `OBJECTID`    | int64     | Unique identifier for each record           |
+# | `OH_Region_`  | object    | Code for Ontario Health Region              |
+# | `OH_Name`     | object    | English name for Ontario Health Region      |
+# | `OH_Name_FR`  | object    | French name for Ontario Health Region       |
+# | `geometry`    | object    | Geometric data representing the region's boundaries in MULTIPOLYGON format |
+# 
+# 
+# ### [Ontario Health Region Populations](https://www.ontariohealth.ca/about-us/our-programs/ontario-health-regions)
+# No dynamic data that parallels the main hospitalization dataset could be found, so in lieu we're using the official static population numbers reported for each region from Ontario Health's website.
+# 
+# ### [Vaccine Dates - COVID-19 vaccination in Canada](https://en.wikipedia.org/wiki/COVID-19_vaccination_in_Canada)
+# This article was used to determine the dates that new vaccines became available through the pandemic.
+# 
+# ### [Variant Dates - Variants of SARS-CoV-2](https://en.wikipedia.org/wiki/Variants_of_SARS-CoV-2)
+# This article was used to determine the dates the the different variants of the virus emerged.
+# 
+# ### Source Links
+# - [Data Source - COVID-19 Cases in Hospital and ICU by Ontario Health Region](https://data.ontario.ca/dataset/covid-19-cases-in-hospital-and-icu-by-ontario-health-region)
+# - [Vaccine Dates - COVID-19 vaccination in Canada](https://en.wikipedia.org/wiki/COVID-19_vaccination_in_Canada)
+# - [Variant Dates - Variants of SARS-CoV-2](https://en.wikipedia.org/wiki/SARS-CoV-2_Omicron_variant)
+# - [Ontario Health Region Boundaries](https://data.ontario.ca/dataset/ontario-s-health-region-geographic-data)
+# - [Ontario Health Region Populations](https://www.ontariohealth.ca/about-us/our-programs/ontario-health-regions)
+# 
+# ### Questions
+# 1. How have hospitalizations and ICU admissions due to COVID-19 in Ontario fluctuated over time in relation to key events like the emergence of new virus variants and the rollout of vaccines?
+# 2. What are the long-term trends in COVID-19 hospitalizations and ICU admissions in Ontario, and is there a discernible seasonal pattern to these metrics?
+# 3. How is the burden of COVID-19 hospitalizations and ICU admissions distributed across the different health regions of Ontario?
+# 4. When accounting for population, which Ontario health regions have been most and least affected by COVID-19 in terms of hospitalizations and ICU admissions?
+
+# # Imports & Data Processing
+
+# In[27]:
 
 
 import pandas as pd
@@ -16,12 +73,32 @@ from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 
-# In[3]:
+# In[28]:
 
 
 BLUE = '#3a86ff'
 RED = '#780000'
 GREEN = '#127823'
+
+key_dates = {
+    '2020-12-01': 'Emergence of Alpha variant',
+    '2021-05-01': 'Emergence of Beta variant',
+    '2021-08-01': 'Emergence of Gamma variant',
+    '2021-11-01': 'Emergence of Delta variant',
+    '2022-02-01': 'Emergence of Omicron variant',
+    '2020-12-14': 'First Pfizer–BioNTech vaccine administered in Canada',
+    '2020-12-23': 'Health Canada authorizes Moderna vaccine',
+    '2021-02-26': 'Oxford–AstraZeneca vaccine authorized by Health Canada',
+    '2021-03-05': 'Janssen (Johnson & Johnson) vaccine authorized by Health Canada',
+    '2021-05-05': 'Pfizer vaccine authorized for adolescents 12 to 15 in Canada',
+    '2021-09-16': 'Moderna and Pfizer vaccines receive full approval for use in individuals aged 12 and older',
+    '2021-11-19': 'Health Canada approves Pfizer-BioNTech vaccine for children aged 5 to 11',
+    '2021-12-14': 'One year since the first COVID-19 vaccine was administered in Canada',
+    '2022-07-14': 'Health Canada approves Moderna vaccine for children aged 6 months to 5 years',
+    '2022-09-01': 'Moderna bivalent vaccine targeting original and Omicron BA.1 variant authorized by Health Canada',
+    '2022-10-07': 'Pfizer bivalent vaccine targeting Omicron BA.4 and BA.5 subvariants approved by Health Canada',
+    '2023-09-12': 'Health Canada authorizes a new Moderna vaccine based on Omicron XBB.1.5 subvariant',
+}
 
 # Load primary dataset
 df = pd.read_csv("data/region_hospital_icu_covid_data.csv")
@@ -51,7 +128,7 @@ df['OH_Name'] = df['OH_Name'].str.title()
 # Get a list of regions
 regions = df["OH_Name"].unique()
 
-
+# From [Ontario Health Region Populations](https://www.ontariohealth.ca/about-us/our-programs/ontario-health-regions)
 populations = {'Central': 5000000, 'East': 3700000, 'North East': 557000, 'North West': 232299, 'Toronto': 1400000, 'West': 4000000}
 populations_df = pd.DataFrame(list(populations.items()), columns=['OH_Name', 'population'])
 
@@ -59,63 +136,24 @@ populations_df = pd.DataFrame(list(populations.items()), columns=['OH_Name', 'po
 aggregated_df = df.groupby('OH_Name')[key_variables].sum().reset_index()
 aggregated_df = aggregated_df.merge(populations_df, on='OH_Name')
 
+# Setup dataframes for the geospatial visualizations
+gdf = gpd.read_file('data/ontario_health_region_boundaries.shp')
+hospitalizations_df = df.groupby('OH_Name')['hospitalizations'].sum().reset_index()
 
-# ## Introduction
-# In the more than four years since the beginning of the COVID-19 pandemic, Ontario's hospitals have been met with cycles of inundation related to the virus and its variants. Here, it is our aim to utilize a [dateset from the Ontario Ministry of Health](https://data.ontario.ca/dataset/covid-19-cases-in-hospital-and-icu-by-ontario-health-region) to explore questions about how the load experienced by the province's hospitals has been distributed (namely, how it has been distributed across different Ontario Health Regions, characterized by clear geographic boundaries as well as approximate population numbers), and been affected by key events, like the emergence of new variants and vaccines.
+merged_gdf = gdf.merge(hospitalizations_df, on='OH_Name')
+merged_gdf = merged_gdf.merge(populations_df, on='OH_Name')
+merged_gdf['hospitalization_to_population'] = merged_gdf['hospitalizations'] / merged_gdf['population']
+
+merged_gdf = gdf.merge(aggregated_df, on='OH_Name')
+merged_gdf['hospitalization_to_population'] = merged_gdf['hospitalizations'] / merged_gdf['population']
+merged_gdf['icu_to_population'] = merged_gdf['icu_current_covid'] / merged_gdf['population']
+
+
+# # Question 1: How have hospitalizations and ICU admissions due to COVID-19 in Ontario fluctuated over time in relation to key events like the emergence of new virus variants and the rollout of vaccines?
 # 
-# 
-# ### Data Fields
-# 
-# | CSV Field           | Description                                                                                   |
-# |---------------------|-----------------------------------------------------------------------------------------------|
-# | `date`              | Date                                                                                          |
-# | `oh_region`         | Ontario Health Region                                                                                     |
-# | `hospitalizations`  | Current hospitalizations with COVID-19                                                        |
-# | `icu_crci_total`    | Current patients in Intensive Care Units (ICUs) due to COVID-related critical illness         |
-# | `icu_current_covid` | Patients in Intensive Care Units (ICUs) testing positive for COVID                            |
-# | `icu_former_covid`  | Current patients in Intensive Care Units (ICUs) no longer testing positive for COVID          |
-# | `icu_crci_total_vented` | Current patients in Intensive Care Units (ICUs) on ventilators due to COVID-related critical illness |
-# | `icu_current_covid_vented` | Current patients in Intensive Care Units (ICUs) on ventilators testing positive for COVID   |
-# | `icu_former_covid_vented` | Current patients in Intensive Care Units (ICUs) on ventilators no longer testing positive for COVID |
-# 
-# ### Sources
-# [Data Source - COVID-19 Cases in Hospital and ICU by Ontario Health Region](https://data.ontario.ca/dataset/covid-19-cases-in-hospital-and-icu-by-ontario-health-region)
-# 
-# [Key Dates - COVID-19 vaccination in Canada](https://en.wikipedia.org/wiki/COVID-19_vaccination_in_Canada)
-# 
-# [Ontario Health Region Boundaries](https://data.ontario.ca/dataset/ontario-s-health-region-geographic-data)
-# 
-# [Ontario Health Region Populations](https://www.ontariohealth.ca/about-us/our-programs/ontario-health-regions)
+# The visualization for this question will employ line graphs to plot hospitalizations and ICU admissions over time. Each line will represent the aggregated counts per day, overlayed with markers indicating key dates such as the emergence of new virus variants and vaccine introductions. This graphical representation will enable us to observe potential correlations between these events and the numbers of hospital and ICU admissions, providing insights into the responsiveness of the healthcare system to pandemic developments.
 
-# ## Motivation
-
-# ### Question 1: Time Series - Key Date Annotations
-
-# In[4]:
-
-
-key_dates = {
-    '2020-12-01': 'Emergence of Alpha variant',
-    '2021-05-01': 'Emergence of Beta variant',
-    '2021-08-01': 'Emergence of Gamma variant',
-    '2021-11-01': 'Emergence of Delta variant',
-    '2022-02-01': 'Emergence of Omicron variant',
-    '2020-12-14': 'First Pfizer–BioNTech vaccine administered in Canada',
-    '2020-12-23': 'Health Canada authorizes Moderna vaccine',
-    '2021-02-26': 'Oxford–AstraZeneca vaccine authorized by Health Canada',
-    '2021-03-05': 'Janssen (Johnson & Johnson) vaccine authorized by Health Canada',
-    '2021-05-05': 'Pfizer vaccine authorized for adolescents 12 to 15 in Canada',
-    '2021-09-16': 'Moderna and Pfizer vaccines receive full approval for use in individuals aged 12 and older',
-    '2021-11-19': 'Health Canada approves Pfizer-BioNTech vaccine for children aged 5 to 11',
-    '2021-12-14': 'One year since the first COVID-19 vaccine was administered in Canada',
-    '2022-07-14': 'Health Canada approves Moderna vaccine for children aged 6 months to 5 years',
-    '2022-09-01': 'Moderna bivalent vaccine targeting original and Omicron BA.1 variant authorized by Health Canada',
-    '2022-10-07': 'Pfizer bivalent vaccine targeting Omicron BA.4 and BA.5 subvariants approved by Health Canada',
-    '2023-09-12': 'Health Canada authorizes a new Moderna vaccine based on Omicron XBB.1.5 subvariant',
-}
-
-
-# In[5]:
+# In[21]:
 
 
 # Get daily totals for each region
@@ -208,9 +246,11 @@ fig.update_layout(
 fig.show()
 
 
-# ### Question 2: Time Series - Trend & Seasonality
+# # Question 2: What are the long-term trends in COVID-19 hospitalizations and ICU admissions in Ontario, and is there a discernible seasonal pattern to these metrics?
+# 
+# Here, we will use time series decomposition to separate the data into its constituent components: trend and seasonality. The visualization will show the overarching direction in which hospitalizations and ICU admissions are moving (trend) and recurring patterns at regular intervals (seasonality). This analysis can help identify times of the year with higher healthcare demands and assist in better planning for future outbreaks.
 
-# In[15]:
+# In[22]:
 
 
 total_ontario_hospitalizations = df.groupby('date')['hospitalizations'].sum()
@@ -258,7 +298,7 @@ fig.update_yaxes(title_text='Seasonality', row=2, col=1)
 fig.show()
 
 
-# In[7]:
+# In[23]:
 
 
 # Assuming 'df' is your DataFrame and 'date' is the index
@@ -309,9 +349,11 @@ fig_icu.update_yaxes(title_text='Seasonality', row=2, col=1)
 fig_icu.show()
 
 
-# ### Question 3: Pie Charts - Hospital Load by Region
+# # Question 3: How is the burden of COVID-19 hospitalizations and ICU admissions distributed across the different health regions of Ontario?
+# 
+# Pie charts will be used to represent the proportion of COVID-19 hospitalizations and ICU admissions within each Ontario health region. This will allow for a quick visual assessment of how the healthcare burden is shared across the regions, highlighting areas with disproportionately high or low numbers relative to others.
 
-# In[8]:
+# In[24]:
 
 
 # I decided to make a custom color map for funzies
@@ -344,19 +386,11 @@ plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 plt.show()
 
 
-# ### Question 4: Choropleth Map - Relative Hospitalization & ICU Load by Region
+# # Question 4: When accounting for population, which Ontario health regions have been most and least affected by COVID-19 in terms of hospitalizations and ICU admissions?
+# 
+# Choropleth maps will be created to show the hospitalization-to-population and ICU-to-population ratios by region. Regions will be color-coded based on these ratios, allowing for immediate visual comprehension of which areas were hit hardest when accounting for population size. These maps will provide a visual summary that contextualizes the raw data within the framework of each region's population density.
 
-# In[9]:
-
-
-gdf = gpd.read_file('data/ontario_health_region_boundaries.shp')
-hospitalizations_df = df.groupby('OH_Name')['hospitalizations'].sum().reset_index()
-merged_gdf = gdf.merge(hospitalizations_df, on='OH_Name')
-merged_gdf = merged_gdf.merge(populations_df, on='OH_Name')
-merged_gdf['hospitalization_to_population'] = merged_gdf['hospitalizations'] / merged_gdf['population']
-
-
-# In[10]:
+# In[25]:
 
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
@@ -379,15 +413,7 @@ for idx, row in merged_gdf.iterrows():
 plt.show()
 
 
-# In[11]:
-
-
-merged_gdf = gdf.merge(aggregated_df, on='OH_Name')
-merged_gdf['hospitalization_to_population'] = merged_gdf['hospitalizations'] / merged_gdf['population']
-merged_gdf['icu_to_population'] = merged_gdf['icu_current_covid'] / merged_gdf['population']
-
-
-# In[12]:
+# In[26]:
 
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
